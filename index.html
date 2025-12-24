@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>問卷分派中...</title>
+  <meta http-equiv="cache-control" content="no-cache" />
+  <meta http-equiv="pragma" content="no-cache" />
+  <meta http-equiv="expires" content="0" />
+  <style>
+    body { font-family: system-ui, -apple-system, "Noto Sans TC", "Microsoft JhengHei", sans-serif; padding: 24px; }
+    .box { max-width: 720px; margin: 0 auto; }
+    .small { color: #666; font-size: 14px; line-height: 1.6; }
+    .btn { display: inline-block; padding: 10px 14px; border: 1px solid #ddd; border-radius: 10px; text-decoration: none; }
+    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>正在為你分派問卷…</h1>
+    <p class="small">如果沒有自動跳轉，請點下面的按鈕。</p>
+    <p><a id="fallback" class="btn" href="#">前往問卷</a></p>
+    <p class="small" id="debug"></p>
+  </div>
+
+<script>
+(function () {
+  // ===== 你的三份問卷連結 =====
+  const SURVEYS = [
+    { id: "A", url: "https://gemini.google.com/share/7f0f5d16ba2b" },
+    { id: "B", url: "https://gemini.google.com/share/e459a6177e6e" },
+    { id: "C", url: "https://gemini.google.com/share/f0104a8534ae" }
+  ];
+
+  // ===== 可調參數 =====
+  const REDIRECT_DELAY_MS = 250; // 稍微延遲，讓fallback可更新
+  const STORAGE_KEY = "survey_assignment_v1"; // 本機保存分派結果（同一人重開仍可一致）
+
+  // ===== 取用 URL 參數（可選） =====
+  // 你可以在短網址後面帶 ?pid=xxx 當作受試者代碼（例如班級/組別/學號後四碼等）
+  const params = new URLSearchParams(location.search);
+  const pid = params.get("pid") || "";  // participant id（可空）
+  const force = params.get("force") || ""; // force=A/B/C（測試用）
+
+  // ===== 分派策略 =====
+  // 1) 若已有 localStorage 記錄：沿用（避免同一人多次點擊被分到不同組）
+  // 2) 若有 force：強制分派（方便你測試）
+  // 3) 否則：等機率 1/3 隨機
+  function pickSurvey() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      if (saved && saved.id && saved.url) return saved;
+    } catch (e) {}
+
+    if (["A","B","C"].includes(force)) {
+      const s = SURVEYS.find(x => x.id === force);
+      return saveAndReturn(s);
+    }
+
+    const idx = Math.floor(Math.random() * SURVEYS.length); // 0..2 等機率
+    return saveAndReturn(SURVEYS[idx]);
+  }
+
+  function saveAndReturn(s) {
+    const payload = {
+      id: s.id,
+      url: s.url,
+      at: new Date().toISOString(),
+      pid: pid || null
+    };
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (e) {}
+    return payload;
+  }
+
+  // ===== 組合目標網址：附上追蹤參數 =====
+  // 會在問卷網址後面加上：
+  //   ?group=A|B|C
+  //   &pid=xxx（如果你有帶）
+  //   &ts=時間戳（避免某些環境快取）
+  function buildTargetUrl(baseUrl, groupId) {
+    const u = new URL(baseUrl);
+    u.searchParams.set("group", groupId);
+    if (pid) u.searchParams.set("pid", pid);
+    u.searchParams.set("ts", String(Date.now()));
+    return u.toString();
+  }
+
+  const chosen = pickSurvey();
+  const target = buildTargetUrl(chosen.url, chosen.id);
+
+  // 更新 fallback
+  const fallback = document.getElementById("fallback");
+  fallback.href = target;
+
+  // 顯示 debug（需要時可保留；正式也不影響）
+  const debug = document.getElementById("debug");
+  debug.textContent = `分派組別：${chosen.id}${pid ? " / pid=" + pid : ""}。若未跳轉，請點「前往問卷」。`;
+
+  // 跳轉（用 replace 避免使用者按返回又再分派一次）
+  setTimeout(() => {
+    window.location.replace(target);
+  }, REDIRECT_DELAY_MS);
+})();
+</script>
+</body>
+</html>
