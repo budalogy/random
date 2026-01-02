@@ -24,6 +24,7 @@
       border-radius: 10px;
       text-decoration: none;
     }
+    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
   </style>
 </head>
 <body>
@@ -32,37 +33,56 @@
     <p class="small">如果沒有自動跳轉，請點下方按鈕。</p>
     <p><a id="fallback" class="btn" href="#">前往問卷</a></p>
     <p class="small" id="info"></p>
+    <p class="small">
+      （管理者提示：可用 <code>?force=A</code>/<code>?force=B</code>/<code>?force=C</code> 測試；
+      可加 <code>?pid=xxx</code> 帶受試者代碼）
+    </p>
   </div>
 
 <script>
 (function () {
 
-  // ===== 三份問卷 =====
+  // ===== 三份問卷（加權抽籤：調整 w 即可改機率）=====
+  // 目前設定 A:B:C = 1:2:1  → 機率 25% : 50% : 25%
+  // 若要讓 B 更常出現，可把 B 的 w 加大，例如 1:3:1（B=60%）或 1:4:1（B=66.7%）
   const SURVEYS = [
-    { id: "A", url: "https://gemini.google.com/share/7f0f5d16ba2b" },
-    { id: "B", url: "https://gemini.google.com/share/e459a6177e6e" },
-    { id: "C", url: "https://gemini.google.com/share/f0104a8534ae" }
+    { id: "A", url: "https://gemini.google.com/share/7f0f5d16ba2b", w: 1 },
+    { id: "B", url: "https://gemini.google.com/share/e459a6177e6e", w: 2 },
+    { id: "C", url: "https://gemini.google.com/share/f0104a8534ae", w: 1 }
   ];
 
-  // ===== 讀取網址參數（可選） =====
+  // ===== 讀取網址參數（可選）=====
   // pid：受試者代碼（班級、流水號、學號後四碼等）
-  // force=A/B/C：你自己測試用
+  // force=A/B/C：你自己測試用（會覆蓋抽籤）
   const params = new URLSearchParams(location.search);
   const pid = params.get("pid") || "";
   const force = params.get("force");
 
-  // ===== 每次都重新抽（等機率） =====
+  // ===== 加權抽籤 =====
   function drawSurvey() {
+    // 測試用：強制分派
     if (["A","B","C"].includes(force)) {
       return SURVEYS.find(s => s.id === force);
     }
-    const i = Math.floor(Math.random() * SURVEYS.length); // 0,1,2
-    return SURVEYS[i];
+
+    const total = SURVEYS.reduce((sum, s) => sum + (Number(s.w) || 0), 0);
+    if (total <= 0) {
+      // 若權重設定錯誤，退回等機率
+      const i = Math.floor(Math.random() * SURVEYS.length);
+      return SURVEYS[i];
+    }
+
+    let r = Math.random() * total;
+    for (const s of SURVEYS) {
+      r -= (Number(s.w) || 0);
+      if (r < 0) return s;
+    }
+    return SURVEYS[SURVEYS.length - 1]; // 保底
   }
 
   const chosen = drawSurvey();
 
-  // ===== 組合導向網址（附上標記參數） =====
+  // ===== 組合導向網址（附上標記參數）=====
   const target = new URL(chosen.url);
   target.searchParams.set("group", chosen.id);
   if (pid) target.searchParams.set("pid", pid);
